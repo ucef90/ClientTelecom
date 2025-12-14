@@ -2,29 +2,113 @@ name: Build and Push to Docker Hub
 
 on:
   push:
-    branches: [main]  # Only trigger on main branch pushes
+    branches: [main] # Déclenche le workflow uniquement lors d’un push sur la branche main
 
 jobs:
   build-and-push:
+    # Machine virtuelle GitHub utilisée pour exécuter le pipeline CI
     runs-on: ubuntu-latest
 
     steps:
+      # ==========================================================
+      # 1) Récupération du code source
+      # ==========================================================
       - name: Checkout code
         uses: actions/checkout@v4
+        # Clone le dépôt GitHub dans l’environnement du runner
 
-      - name: Set up Docker Buildx # modern Docker builder that supports multi-platform builds
+      # ==========================================================
+      # 2) Initialisation de Docker Buildx
+      # ==========================================================
+      - name: Set up Docker Buildx
+        # Buildx est le builder Docker moderne :
+        # - support multi-plateforme
+        # - meilleures performances
+        # - recommandé pour CI/CD
         uses: docker/setup-buildx-action@v3
 
+      # ==========================================================
+      # 3) Authentification à Docker Hub
+      # ==========================================================
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
+          # Les credentials sont stockés de manière sécurisée
+          # dans les GitHub Secrets (jamais en clair dans le repo)
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # ==========================================================
+      # 4) Build et push de l’image Docker
+      # ==========================================================
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
+          # Contexte de build (racine du projet)
           context: .
-          file: ./dockerfile  # change if your Dockerfile has a different name or path
+
+          # Chemin vers le Dockerfile
+          # (à adapter si le nom ou l’emplacement change)
+          file: ./dockerfile
+
+          # push: true → pousse l’image vers Docker Hub
           push: true
+
+          # Tag de l’image Docker publiée
+          # format : <dockerhub_username>/<image_name>:<tag>
           tags: anasriad8/telco-fastapi:latest
+# =====================================================================
+# EXPLICATION GLOBALE – CI/CD DOCKER AVEC GITHUB ACTIONS
+# =====================================================================
+#
+# Objectif de ce workflow :
+# - Automatiser le build de l’image Docker
+# - Publier l’image sur Docker Hub
+# - Garantir un déploiement reproductible et traçable
+#
+# Déclenchement :
+# - À chaque push sur la branche main
+#
+# Chaîne CI/CD exécutée :
+#
+#   Push sur main
+#        ↓
+#   GitHub Actions
+#        ↓
+#   Build image Docker (Dockerfile)
+#        ↓
+#   Push image vers Docker Hub
+#        ↓
+#   Image prête à être déployée (AWS / VM / Kubernetes)
+#
+# Rôle de chaque étape :
+#
+# 1) checkout
+#    → récupère le code source
+#
+# 2) setup-buildx
+#    → initialise le moteur de build Docker moderne
+#
+# 3) docker login
+#    → authentification sécurisée via secrets GitHub
+#
+# 4) build-push-action
+#    → build l’image
+#    → pousse l’image sur Docker Hub
+#
+# Bonnes pratiques CI/CD respectées :
+# - Secrets stockés dans GitHub Secrets
+# - Build automatisé (pas manuel)
+# - Image versionnée via tags
+# - Pipeline simple, lisible et maintenable
+#
+# Lien avec le MLOps :
+# - Chaque nouveau modèle / code validé sur main
+#   génère une nouvelle image déployable
+# - Le serving ML devient reproductible
+# - Base pour un déploiement continu (CD)
+#
+# Évolutions possibles :
+# - Ajouter un tag versionné (ex: v1.2.0)
+# - Scanner l’image (sécurité)
+# - Déployer automatiquement sur AWS après le push

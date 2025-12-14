@@ -4,121 +4,170 @@ from typing import Tuple, List
 
 def validate_telco_data(df) -> Tuple[bool, List[str]]:
     """
-    Comprehensive data validation for Telco Customer Churn dataset using Great Expectations.
-    
-    This function implements critical data quality checks that must pass before model training.
-    It validates data integrity, business logic constraints, and statistical properties
-    that the ML model expects.
-    
+    Validation complète des données du dataset Telco Customer Churn avec Great Expectations.
+
+    Cette fonction exécute des contrôles qualité critiques qui doivent être validés
+    avant l'entraînement du modèle. Elle vérifie :
+    - l'intégrité du schéma (colonnes obligatoires)
+    - des contraintes métier (valeurs autorisées)
+    - des contraintes numériques (bornes)
+    - des propriétés statistiques raisonnables attendues par le modèle
+    - des règles de cohérence entre colonnes
     """
-    print("🔍 Starting data validation with Great Expectations...")
-    
-    # Convert pandas DataFrame to Great Expectations Dataset
+    print("🔍 Démarrage de la validation des données avec Great Expectations...")
+
+    # Conversion du DataFrame pandas en objet Great Expectations (Dataset)
     ge_df = ge.dataset.PandasDataset(df)
-    
-    # === SCHEMA VALIDATION - ESSENTIAL COLUMNS ===
-    print("   📋 Validating schema and required columns...")
-    
-    # Customer identifier must exist (required for business operations)  
+
+    # ==========================================================
+    # VALIDATION DU SCHÉMA – COLONNES ESSENTIELLES
+    # ==========================================================
+    print("   📋 Validation du schéma et des colonnes requises...")
+
+    # Identifiant client : doit exister (utile métier) et ne pas être vide
     ge_df.expect_column_to_exist("customerID")
     ge_df.expect_column_values_to_not_be_null("customerID")
-    
-    # Core demographic features
-    ge_df.expect_column_to_exist("gender") 
+
+    # Variables démographiques principales
+    ge_df.expect_column_to_exist("gender")
     ge_df.expect_column_to_exist("Partner")
     ge_df.expect_column_to_exist("Dependents")
-    
-    # Service features (critical for churn analysis)
+
+    # Variables de services (importantes pour l'analyse churn)
     ge_df.expect_column_to_exist("PhoneService")
     ge_df.expect_column_to_exist("InternetService")
     ge_df.expect_column_to_exist("Contract")
-    
-    # Financial features (key churn predictors)
+
+    # Variables financières (forts prédicteurs de churn)
     ge_df.expect_column_to_exist("tenure")
     ge_df.expect_column_to_exist("MonthlyCharges")
     ge_df.expect_column_to_exist("TotalCharges")
-    
-    # === BUSINESS LOGIC VALIDATION ===
-    print("   💼 Validating business logic constraints...")
-    
-    # Gender must be one of expected values (data integrity)
+
+    # ==========================================================
+    # VALIDATION MÉTIER – VALEURS AUTORISÉES
+    # ==========================================================
+    print("   💼 Validation des contraintes métier (valeurs possibles)...")
+
+    # Genre : valeurs attendues
     ge_df.expect_column_values_to_be_in_set("gender", ["Male", "Female"])
-    
-    # Yes/No fields must have valid values
+
+    # Champs Yes/No : valeurs attendues
     ge_df.expect_column_values_to_be_in_set("Partner", ["Yes", "No"])
     ge_df.expect_column_values_to_be_in_set("Dependents", ["Yes", "No"])
     ge_df.expect_column_values_to_be_in_set("PhoneService", ["Yes", "No"])
-    
-    # Contract types must be valid (business constraint)
+
+    # Types de contrat : contrainte métier
     ge_df.expect_column_values_to_be_in_set(
-        "Contract", 
+        "Contract",
         ["Month-to-month", "One year", "Two year"]
     )
-    
-    # Internet service types (business constraint)
+
+    # Types d'Internet : contrainte métier
     ge_df.expect_column_values_to_be_in_set(
         "InternetService",
         ["DSL", "Fiber optic", "No"]
     )
-    
-    # === NUMERIC RANGE VALIDATION ===
-    print("   📊 Validating numeric ranges and business constraints...")
-    
-    # Tenure must be non-negative (business logic - can't have negative tenure)
+
+    # ==========================================================
+    # VALIDATION DES PLAGES NUMÉRIQUES – CONTRAINTES DE BASE
+    # ==========================================================
+    print("   📊 Validation des bornes numériques et des contraintes métier...")
+
+    # Tenure (ancienneté) ne peut pas être négatif
     ge_df.expect_column_values_to_be_between("tenure", min_value=0)
-    
-    # Monthly charges must be positive (business logic - no free service)
+
+    # MonthlyCharges doit être >= 0 (pas de montant négatif)
     ge_df.expect_column_values_to_be_between("MonthlyCharges", min_value=0)
-    
-    # Total charges should be non-negative (business logic)
+
+    # TotalCharges doit être >= 0
     ge_df.expect_column_values_to_be_between("TotalCharges", min_value=0)
-    
-    # === STATISTICAL VALIDATION ===
-    print("   📈 Validating statistical properties...")
-    
-    # Tenure should be reasonable (max ~10 years = 120 months for telecom)
+
+    # ==========================================================
+    # VALIDATION STATISTIQUE – BORNES RAISONNABLES
+    # ==========================================================
+    print("   📈 Validation des propriétés statistiques (valeurs raisonnables)...")
+
+    # Tenure raisonnable : en télécom, on borne souvent à ~10 ans = 120 mois
     ge_df.expect_column_values_to_be_between("tenure", min_value=0, max_value=120)
-    
-    # Monthly charges should be within reasonable business range
+
+    # MonthlyCharges dans une plage réaliste
     ge_df.expect_column_values_to_be_between("MonthlyCharges", min_value=0, max_value=200)
-    
-    # No missing values in critical numeric features  
+
+    # Pas de valeurs manquantes sur des features numériques critiques
     ge_df.expect_column_values_to_not_be_null("tenure")
     ge_df.expect_column_values_to_not_be_null("MonthlyCharges")
-    
-    # === DATA CONSISTENCY CHECKS ===
-    print("   🔗 Validating data consistency...")
-    
-    # Total charges should generally be >= Monthly charges (except for very new customers)
-    # This is a business logic check to catch data entry errors
+
+    # ==========================================================
+    # COHÉRENCE DES DONNÉES – RÈGLES ENTRE COLONNES
+    # ==========================================================
+    print("   🔗 Validation de la cohérence entre colonnes...")
+
+    # En général : TotalCharges >= MonthlyCharges
+    # (sauf cas limites comme clients très récents / anomalies)
+    # mostly=0.95 autorise jusqu'à 5% d'exceptions
     ge_df.expect_column_pair_values_A_to_be_greater_than_B(
         column_A="TotalCharges",
         column_B="MonthlyCharges",
         or_equal=True,
-        mostly=0.95  # Allow 5% exceptions for edge cases
+        mostly=0.95
     )
-    
-    # === RUN VALIDATION SUITE ===
-    print("   ⚙️  Running complete validation suite...")
+
+    # ==========================================================
+    # EXÉCUTION DE LA VALIDATION
+    # ==========================================================
+    print("   ⚙️  Exécution de la suite complète de validations...")
     results = ge_df.validate()
-    
-    # === PROCESS RESULTS ===
-    # Extract failed expectations for detailed error reporting
+
+    # ==========================================================
+    # TRAITEMENT DES RÉSULTATS
+    # ==========================================================
+    # Extraction des expectations échouées pour remonter des erreurs exploitables
     failed_expectations = []
     for r in results["results"]:
         if not r["success"]:
             expectation_type = r["expectation_config"]["expectation_type"]
             failed_expectations.append(expectation_type)
-    
-    # Print validation summary
+
+    # Résumé
     total_checks = len(results["results"])
     passed_checks = sum(1 for r in results["results"] if r["success"])
     failed_checks = total_checks - passed_checks
-    
+
     if results["success"]:
-        print(f"✅ Data validation PASSED: {passed_checks}/{total_checks} checks successful")
+        print(f"✅ Validation OK : {passed_checks}/{total_checks} contrôles réussis")
     else:
-        print(f"❌ Data validation FAILED: {failed_checks}/{total_checks} checks failed")
-        print(f"   Failed expectations: {failed_expectations}")
-    
+        print(f"❌ Validation KO : {failed_checks}/{total_checks} contrôles en échec")
+        print(f"   Expectations échouées : {failed_expectations}")
+
     return results["success"], failed_expectations
+
+
+# =====================================================================
+# EXPLICATION GLOBALE – DATA VALIDATION & INDUSTRIALISATION (MLOps)
+# =====================================================================
+#
+# Objectif de ce module :
+# - Bloquer l'entraînement / le déploiement si la qualité des données est insuffisante
+# - Détecter tôt les erreurs de schéma, de valeurs, de types ou de cohérence
+#
+# Pourquoi c'est critique en MLOps :
+# - Un modèle ML est très sensible aux variations de schéma (colonne manquante)
+# - Des valeurs inattendues peuvent casser un pipeline (ex: nouvelles catégories)
+# - Des anomalies numériques (valeurs négatives) peuvent fausser la prédiction
+# - Les règles de cohérence évitent des incohérences métier invisibles
+#
+# Résultat renvoyé :
+# - success (bool) : True si toutes les validations passent
+# - failed_expectations (List[str]) : liste des contrôles échoués
+#
+# Intégration recommandée :
+# - À exécuter juste après le chargement des données (load_data)
+# - Et avant preprocess_data / build_features / entraînement
+#
+# Exemple de pipeline :
+# df = load_data(PATH)
+# ok, failures = validate_telco_data(df)
+# if not ok:
+#     raise ValueError(f"Data validation failed: {failures}")
+# df = preprocess_data(df)
+# df = build_features(df)

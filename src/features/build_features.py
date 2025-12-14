@@ -3,105 +3,172 @@ import pandas as pd
 
 def _map_binary_series(s: pd.Series) -> pd.Series:
     """
-    Apply deterministic binary encoding to 2-category features.
-    
-    This function implements the core binary encoding logic that converts
-    categorical features with exactly 2 values into 0/1 integers. The mappings
-    are deterministic and must be consistent between training and serving.
+    Applique un encodage binaire déterministe aux variables
+    catégorielles contenant exactement deux modalités.
 
+    Cette fonction implémente la logique centrale d'encodage binaire
+    utilisée pour transformer certaines variables catégorielles en
+    entiers 0/1. Les mappings sont déterministes et doivent être
+    strictement identiques entre l'entraînement et le serving.
     """
-    # Get unique values and remove NaN
+
+    # Récupération des valeurs uniques (hors NaN) et conversion en chaînes
     vals = list(pd.Series(s.dropna().unique()).astype(str))
     valset = set(vals)
 
-    # === DETERMINISTIC BINARY MAPPINGS ===
-    # CRITICAL: These exact mappings are hardcoded in serving pipeline
-    
-    # Yes/No mapping (most common pattern in telecom data)
+    # ==========================================================
+    # MAPPINGS BINAIRES DÉTERMINISTES
+    # ==========================================================
+    # IMPORTANT : ces mappings doivent être identiques
+    # dans le pipeline de serving (API / UI)
+
+    # Cas Yes / No (pattern le plus courant dans les données Telco)
     if valset == {"Yes", "No"}:
         return s.map({"No": 0, "Yes": 1}).astype("Int64")
-        
-    # Gender mapping (demographic feature)
+
+    # Cas Gender (variable démographique)
     if valset == {"Male", "Female"}:
         return s.map({"Female": 0, "Male": 1}).astype("Int64")
 
-    # === GENERIC BINARY MAPPING ===
-    # For any other 2-category feature, use stable alphabetical ordering
+    # ==========================================================
+    # MAPPING BINAIRE GÉNÉRIQUE
+    # ==========================================================
+    # Pour toute autre variable à 2 modalités,
+    # on utilise un ordre alphabétique stable
     if len(vals) == 2:
-        # Sort values to ensure consistent mapping across runs
+        # Tri alphabétique pour garantir un mapping stable
         sorted_vals = sorted(vals)
         mapping = {sorted_vals[0]: 0, sorted_vals[1]: 1}
         return s.astype(str).map(mapping).astype("Int64")
 
-    # === NON-BINARY FEATURES ===
-    # Return unchanged - will be handled by one-hot encoding
+    # ==========================================================
+    # VARIABLES NON BINAIRES
+    # ==========================================================
+    # Les variables avec plus de 2 modalités
+    # seront traitées par un encodage one-hot
     return s
 
 
 def build_features(df: pd.DataFrame, target_col: str = "Churn") -> pd.DataFrame:
     """
-    Apply complete feature engineering pipeline for training data.
-    
-    This is the main feature engineering function that transforms raw customer data
-    into ML-ready features. The transformations must be exactly replicated in the
-    serving pipeline to ensure prediction accuracy.
+    Applique l'ensemble du pipeline de feature engineering
+    sur les données clients Telco.
 
+    Cette fonction transforme les données nettoyées en
+    variables prêtes pour l'entraînement ou l'inférence
+    d'un modèle de Machine Learning.
+
+    IMPORTANT :
+    Les transformations appliquées ici doivent être
+    rigoureusement répliquées dans le pipeline de serving
+    afin de garantir la cohérence des prédictions.
     """
+
+    # Copie défensive pour éviter toute modification en place
     df = df.copy()
-    print(f"🔧 Starting feature engineering on {df.shape[1]} columns...")
+    print(f"🔧 Démarrage du feature engineering sur {df.shape[1]} colonnes...")
 
-    # === STEP 1: Identify Feature Types ===
-    # Find categorical columns (object dtype) excluding the target variable
+    # ==========================================================
+    # ÉTAPE 1 : Identification des types de variables
+    # ==========================================================
+    # Variables catégorielles (type object), hors variable cible
     obj_cols = [c for c in df.select_dtypes(include=["object"]).columns if c != target_col]
-    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
-    
-    print(f"   📊 Found {len(obj_cols)} categorical and {len(numeric_cols)} numeric columns")
 
-    # === STEP 2: Split Categorical by Cardinality ===
-    # Binary features (exactly 2 unique values) get binary encoding
-    # Multi-category features (>2 unique values) get one-hot encoding
+    # Variables numériques
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+
+    print(f"   📊 {len(obj_cols)} variables catégorielles | {len(numeric_cols)} variables numériques")
+
+    # ==========================================================
+    # ÉTAPE 2 : Séparation par cardinalité
+    # ==========================================================
+    # - variables binaires : exactement 2 modalités
+    # - variables multi-catégories : plus de 2 modalités
     binary_cols = [c for c in obj_cols if df[c].dropna().nunique() == 2]
     multi_cols = [c for c in obj_cols if df[c].dropna().nunique() > 2]
-    
-    print(f"   🔢 Binary features: {len(binary_cols)} | Multi-category features: {len(multi_cols)}")
-    if binary_cols:
-        print(f"      Binary: {binary_cols}")
-    if multi_cols:
-        print(f"      Multi-category: {multi_cols}")
 
-    # === STEP 3: Apply Binary Encoding ===
-    # Convert 2-category features to 0/1 using deterministic mappings
+    print(f"   🔢 Variables binaires : {len(binary_cols)} | Variables multi-catégories : {len(multi_cols)}")
+    if binary_cols:
+        print(f"      Binaires : {binary_cols}")
+    if multi_cols:
+        print(f"      Multi-catégories : {multi_cols}")
+
+    # ==========================================================
+    # ÉTAPE 3 : Encodage binaire
+    # ==========================================================
+    # Transformation des variables à 2 modalités en 0/1
+    # à l’aide de mappings déterministes
     for c in binary_cols:
         original_dtype = df[c].dtype
         df[c] = _map_binary_series(df[c].astype(str))
-        print(f"      ✅ {c}: {original_dtype} → binary (0/1)")
+        print(f"      ✅ {c} : {original_dtype} → binaire (0/1)")
 
-    # === STEP 4: Convert Boolean Columns ===
-    # XGBoost requires integer inputs, not boolean
+    # ==========================================================
+    # ÉTAPE 4 : Conversion des booléens
+    # ==========================================================
+    # Les modèles comme XGBoost nécessitent des entiers
+    # et non des booléens
     bool_cols = df.select_dtypes(include=["bool"]).columns.tolist()
     if bool_cols:
         df[bool_cols] = df[bool_cols].astype(int)
-        print(f"   🔄 Converted {len(bool_cols)} boolean columns to int: {bool_cols}")
+        print(f"   🔄 Conversion de {len(bool_cols)} colonnes booléennes en int : {bool_cols}")
 
-    # === STEP 5: One-Hot Encoding for Multi-Category Features ===
-    # CRITICAL: drop_first=True prevents multicollinearity
+    # ==========================================================
+    # ÉTAPE 5 : Encodage One-Hot
+    # ==========================================================
+    # Utilisé pour les variables multi-catégories
+    # drop_first=True permet d'éviter la multicolinéarité
     if multi_cols:
-        print(f"   🌟 Applying one-hot encoding to {len(multi_cols)} multi-category columns...")
+        print(f"   🌟 Application du one-hot encoding sur {len(multi_cols)} colonnes...")
         original_shape = df.shape
-        
-        # Apply one-hot encoding with drop_first=True (same as serving)
-        df = pd.get_dummies(df, columns=multi_cols, drop_first=True)
-        
-        new_features = df.shape[1] - original_shape[1] + len(multi_cols)
-        print(f"      ✅ Created {new_features} new features from {len(multi_cols)} categorical columns")
 
-    # === STEP 6: Data Type Cleanup ===
-    # Convert nullable integers (Int64) to standard integers for XGBoost
+        df = pd.get_dummies(
+            df,
+            columns=multi_cols,
+            drop_first=True
+        )
+
+        new_features = df.shape[1] - original_shape[1] + len(multi_cols)
+        print(f"      ✅ {new_features} nouvelles variables créées")
+
+    # ==========================================================
+    # ÉTAPE 6 : Nettoyage final des types
+    # ==========================================================
+    # Conversion des entiers nullable (Int64) vers int standard
+    # requis par XGBoost
     for c in binary_cols:
         if pd.api.types.is_integer_dtype(df[c]):
-            # Fill any NaN values with 0 and convert to int
             df[c] = df[c].fillna(0).astype(int)
 
-    print(f"✅ Feature engineering complete: {df.shape[1]} final features")
+    print(f"✅ Feature engineering terminé : {df.shape[1]} variables finales")
     return df
 
+
+# =====================================================================
+# EXPLICATION GLOBALE – FEATURE ENGINEERING & INDUSTRIALISATION
+# =====================================================================
+#
+# Ce fichier implémente la phase de feature engineering du pipeline ML.
+#
+# Rôle clé :
+# - Transformer les données nettoyées en variables numériques exploitables
+# - Garantir une transformation STRICTEMENT identique entre :
+#     - l'entraînement
+#     - le serving (API / Gradio)
+#
+# Principes d’industrialisation respectés :
+# - Fonctions pures (entrée → sortie)
+# - Mappings déterministes (stabilité des prédictions)
+# - Aucune dépendance au système de fichiers
+# - Compatibilité Docker / AWS / CI-CD
+#
+# Choix techniques assumés :
+# - Encodage binaire pour les variables à 2 modalités
+# - One-hot encoding pour les variables multi-catégories
+# - drop_first=True pour éviter la multicolinéarité
+#
+# Ce design permet :
+# - une meilleure robustesse du modèle
+# - une reproductibilité totale
+# - une lecture claire pour un contexte professionnel,
+#   pédagogique ou jury

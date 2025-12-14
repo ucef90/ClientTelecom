@@ -1,20 +1,34 @@
 """
-FASTAPI + GRADIO SERVING APPLICATION - Production-Ready ML Model Serving
-========================================================================
+APPLICATION FASTAPI + GRADIO – SERVING ML PRÊT POUR LA PRODUCTION
+=================================================================
 
-This application provides a complete serving solution for the Telco Customer Churn model
-with both programmatic API access and a user-friendly web interface.
+Cette application fournit une solution complète de mise en production
+d’un modèle de Machine Learning pour la prédiction du churn client
+dans le secteur des télécommunications.
 
-Architecture:
-- FastAPI: High-performance REST API with automatic OpenAPI documentation
-- Gradio: User-friendly web UI for manual testing and demonstrations
-- Pydantic: Data validation and automatic API documentation
+Elle expose :
+- une API REST performante via FastAPI (accès programmatique)
+- une interface Web interactive via Gradio (tests manuels et démonstrations)
+- une validation stricte des données grâce à Pydantic
+
+Architecture technique :
+- FastAPI : API REST haute performance avec documentation OpenAPI automatique
+- Gradio : Interface utilisateur simple et professionnelle pour la démonstration
+- Pydantic : Validation des entrées et cohérence du schéma de données
+- Pipeline ML : Logique d’inférence centralisée et réutilisable (API + UI)
+
+Objectif principal :
+Assurer une industrialisation propre du modèle ML en garantissant
+la réutilisabilité du pipeline, la robustesse des entrées,
+et la compatibilité avec un déploiement cloud (AWS).
 """
+
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 import gradio as gr
 from src.serving.inference import predict  # Core ML inference logic
+
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -24,76 +38,45 @@ app = FastAPI(
 )
 
 # === HEALTH CHECK ENDPOINT ===
-# CRITICAL: Required for AWS Application Load Balancer health checks
 @app.get("/")
 def root():
-    """
-    Health check endpoint for monitoring and load balancer health checks.
-    """
     return {"status": "ok"}
 
+
 # === REQUEST DATA SCHEMA ===
-# Pydantic model for automatic validation and API documentation
 class CustomerData(BaseModel):
-    """
-    Customer data schema for churn prediction.
-    
-    This schema defines the exact 18 features required for churn prediction.
-    All features match the original dataset structure for consistency.
-    """
-    # Demographics
-    gender: str                # "Male" or "Female"
-    Partner: str               # "Yes" or "No" - has partner
-    Dependents: str            # "Yes" or "No" - has dependents
-    
-    # Phone services
-    PhoneService: str          # "Yes" or "No"
-    MultipleLines: str         # "Yes", "No", or "No phone service"
-    
-    # Internet services  
-    InternetService: str       # "DSL", "Fiber optic", or "No"
-    OnlineSecurity: str        # "Yes", "No", or "No internet service"
-    OnlineBackup: str          # "Yes", "No", or "No internet service"
-    DeviceProtection: str      # "Yes", "No", or "No internet service"
-    TechSupport: str           # "Yes", "No", or "No internet service"
-    StreamingTV: str           # "Yes", "No", or "No internet service"
-    StreamingMovies: str       # "Yes", "No", or "No internet service"
-    
-    # Account information
-    Contract: str              # "Month-to-month", "One year", "Two year"
-    PaperlessBilling: str      # "Yes" or "No"
-    PaymentMethod: str         # "Electronic check", "Mailed check", etc.
-    
-    # Numeric features
-    tenure: int                # Number of months with company
-    MonthlyCharges: float      # Monthly charges in dollars
-    TotalCharges: float        # Total charges to date
+    gender: str
+    Partner: str
+    Dependents: str
+
+    PhoneService: str
+    MultipleLines: str
+
+    InternetService: str
+    OnlineSecurity: str
+    OnlineBackup: str
+    DeviceProtection: str
+    TechSupport: str
+    StreamingTV: str
+    StreamingMovies: str
+
+    Contract: str
+    PaperlessBilling: str
+    PaymentMethod: str
+
+    tenure: int
+    MonthlyCharges: float
+    TotalCharges: float
+
 
 # === MAIN PREDICTION API ENDPOINT ===
 @app.post("/predict")
 def get_prediction(data: CustomerData):
-    """
-    Main prediction endpoint for customer churn prediction.
-    
-    This endpoint:
-    1. Receives validated customer data via Pydantic model
-    2. Calls the inference pipeline to transform features and predict
-    3. Returns churn prediction in JSON format
-    
-    Expected Response:
-    - {"prediction": "Likely to churn"} or {"prediction": "Not likely to churn"}
-    - {"error": "error_message"} if prediction fails
-    """
     try:
-        # Convert Pydantic model to dict and call inference pipeline
         result = predict(data.dict())
         return {"prediction": result}
     except Exception as e:
-        # Return error details for debugging (consider logging in production)
         return {"error": str(e)}
-
-
-# =================================================== # 
 
 
 # === GRADIO WEB INTERFACE ===
@@ -103,17 +86,6 @@ def gradio_interface(
     TechSupport, StreamingTV, StreamingMovies, Contract,
     PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges
 ):
-    """
-    Gradio interface function that processes form inputs and returns prediction.
-    
-    This function:
-    1. Takes individual form inputs from Gradio UI
-    2. Constructs the data dictionary matching the API schema
-    3. Calls the same inference pipeline used by the API
-    4. Returns user-friendly prediction string
-    
-    """
-    # Construct data dictionary matching CustomerData schema
     data = {
         "gender": gender,
         "Partner": Partner,
@@ -130,80 +102,210 @@ def gradio_interface(
         "Contract": Contract,
         "PaperlessBilling": PaperlessBilling,
         "PaymentMethod": PaymentMethod,
-        "tenure": int(tenure),              # Ensure integer type
-        "MonthlyCharges": float(MonthlyCharges),  # Ensure float type
-        "TotalCharges": float(TotalCharges),      # Ensure float type
+        "tenure": int(tenure),
+        "MonthlyCharges": float(MonthlyCharges),
+        "TotalCharges": float(TotalCharges),
     }
-    
-    # Call same inference pipeline as API endpoint
-    result = predict(data)
-    return str(result)  # Return as string for Gradio display
 
-# === GRADIO UI CONFIGURATION ===
-# Build comprehensive Gradio interface with all customer features
-demo = gr.Interface(
-    fn=gradio_interface,
-    inputs=[
-        # Demographics section
-        gr.Dropdown(["Male", "Female"], label="Gender", value="Male"),
-        gr.Dropdown(["Yes", "No"], label="Partner", value="No"),
-        gr.Dropdown(["Yes", "No"], label="Dependents", value="No"),
-        
-        # Phone services section
-        gr.Dropdown(["Yes", "No"], label="Phone Service", value="Yes"),
-        gr.Dropdown(["Yes", "No", "No phone service"], label="Multiple Lines", value="No"),
-        
-        # Internet services section (key churn predictors)
-        gr.Dropdown(["DSL", "Fiber optic", "No"], label="Internet Service", value="Fiber optic"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Online Security", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Online Backup", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Device Protection", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Tech Support", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Streaming TV", value="Yes"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Streaming Movies", value="Yes"),
-        
-        # Contract and billing section (major churn factors)
-        gr.Dropdown(["Month-to-month", "One year", "Two year"], label="Contract", value="Month-to-month"),
-        gr.Dropdown(["Yes", "No"], label="Paperless Billing", value="Yes"),
-        gr.Dropdown([
-            "Electronic check", "Mailed check",
-            "Bank transfer (automatic)", "Credit card (automatic)"
-        ], label="Payment Method", value="Electronic check"),
-        
-        # Numeric features (important for churn prediction)
-        gr.Number(label="Tenure (months)", value=1, minimum=0, maximum=100),
-        gr.Number(label="Monthly Charges ($)", value=85.0, minimum=0, maximum=200),
-        gr.Number(label="Total Charges ($)", value=85.0, minimum=0, maximum=10000),
-    ],
-    outputs=gr.Textbox(label="Churn Prediction", lines=2),
-    title="🔮 Telco Customer Churn Predictor",
-    description="""
-    **Predict customer churn probability using machine learning**
-    
-    Fill in the customer details below to get a churn prediction. The model uses XGBoost trained on 
-    historical telecom customer data to identify customers at risk of churning.
-    
-    💡 **Tip**: Month-to-month contracts with fiber optic internet and electronic check payments 
-    tend to have higher churn rates.
-    """,
-    examples=[
-        # High churn risk example
-        ["Female", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No", 
-         "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check", 
-         1, 85.0, 85.0],
-        # Low churn risk example  
-        ["Male", "Yes", "Yes", "Yes", "Yes", "DSL", "Yes", "Yes", "Yes",
-         "Yes", "No", "No", "Two year", "No", "Credit card (automatic)",
-         60, 45.0, 2700.0]
-    ],
-    theme=gr.themes.Soft()  # Professional appearance
+    result = predict(data)
+    return str(result)
+
+
+# ===================================================
+# === NEW PRO UI (replace ONLY the old gr.Interface) ===
+# ===================================================
+
+css = """
+:root{
+  --brand-blue:#1f2a67;
+  --accent:#f08a1a;
+  --muted:#6b7280;
+  --bg:#ffffff;
+  --card:#ffffff;
+  --border:#e6e8ef;
+}
+.gradio-container{
+  background: var(--bg) !important;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+.be-header{ text-align:center; padding: 18px 10px 6px 10px; }
+.be-title{
+  color: var(--brand-blue);
+  font-size: 42px;
+  font-weight: 800;
+  margin: 0;
+}
+.be-subtitle{ color: var(--muted); font-size: 16px; margin-top: 8px; }
+.be-divider{
+  height: 4px; width: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  margin: 12px 0 18px 0;
+}
+.be-card{
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px 16px 10px 16px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
+}
+.be-card-title{
+  color: var(--brand-blue);
+  font-weight: 800;
+  font-size: 18px;
+  margin: 0 0 8px 0;
+}
+.be-hours{
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 14px;
+  margin: 0 0 10px 0;
+}
+.be-help{
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35rem;
+  margin: 0;
+}
+label span{ font-weight: 700 !important; color: #111827 !important; }
+textarea{ border-radius: 14px !important; }
+"""
+
+theme = gr.themes.Soft(
+    primary_hue="blue",
+    secondary_hue="slate",
+    neutral_hue="slate",
+).set(
+    body_background_fill="#ffffff",
+    block_background_fill="#ffffff",
+    block_border_width="1px",
+    block_radius="16px",
 )
+
+with gr.Blocks(theme=theme, css=css, title="Telco Customer Churn Predictor") as demo:
+
+    gr.HTML(
+        """
+        <div class="be-header">
+          <h1 class="be-title">Programmes Détaillés</h1>
+          <div class="be-subtitle">Interface de démonstration – déploiement FastAPI + Gradio sur AWS</div>
+        </div>
+        <div class="be-divider"></div>
+        """
+    )
+
+    with gr.Tabs():
+        with gr.Tab("Data Analytics"):
+            gr.Markdown("### Semestre 1 : Fondamentaux Data & Industrie")
+
+            with gr.Row(equal_height=True):
+
+                with gr.Column(scale=7):
+                    with gr.Group(elem_classes=["be-card"]):
+                        gr.HTML(
+                            '<div class="be-card-title">Formulaire Client</div>'
+                            '<div class="be-hours">Renseignez les 18 variables</div>'
+                            '<p class="be-help">Les champs suivent exactement le schéma <b>CustomerData</b> '
+                            'et utilisent le même pipeline <b>predict()</b> que l’API.</p>'
+                        )
+
+                        with gr.Accordion("Démographie", open=True):
+                            gender = gr.Dropdown(["Male", "Female"], label="gender", value="Male")
+                            Partner = gr.Dropdown(["Yes", "No"], label="Partner", value="No")
+                            Dependents = gr.Dropdown(["Yes", "No"], label="Dependents", value="No")
+
+                        with gr.Accordion("Téléphonie", open=False):
+                            PhoneService = gr.Dropdown(["Yes", "No"], label="PhoneService", value="Yes")
+                            MultipleLines = gr.Dropdown(["Yes", "No", "No phone service"], label="MultipleLines", value="No")
+
+                        with gr.Accordion("Internet (services)", open=False):
+                            InternetService = gr.Dropdown(["DSL", "Fiber optic", "No"], label="InternetService", value="Fiber optic")
+                            OnlineSecurity = gr.Dropdown(["Yes", "No", "No internet service"], label="OnlineSecurity", value="No")
+                            OnlineBackup = gr.Dropdown(["Yes", "No", "No internet service"], label="OnlineBackup", value="No")
+                            DeviceProtection = gr.Dropdown(["Yes", "No", "No internet service"], label="DeviceProtection", value="No")
+                            TechSupport = gr.Dropdown(["Yes", "No", "No internet service"], label="TechSupport", value="No")
+                            StreamingTV = gr.Dropdown(["Yes", "No", "No internet service"], label="StreamingTV", value="Yes")
+                            StreamingMovies = gr.Dropdown(["Yes", "No", "No internet service"], label="StreamingMovies", value="Yes")
+
+                        with gr.Accordion("Contrat & Paiement", open=False):
+                            Contract = gr.Dropdown(["Month-to-month", "One year", "Two year"], label="Contract", value="Month-to-month")
+                            PaperlessBilling = gr.Dropdown(["Yes", "No"], label="PaperlessBilling", value="Yes")
+                            PaymentMethod = gr.Dropdown(
+                                ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
+                                label="PaymentMethod",
+                                value="Electronic check",
+                            )
+
+                        with gr.Accordion("Numérique", open=False):
+                            tenure = gr.Number(label="tenure", value=1, minimum=0, maximum=100)
+                            MonthlyCharges = gr.Number(label="MonthlyCharges", value=85.0, minimum=0, maximum=200)
+                            TotalCharges = gr.Number(label="TotalCharges", value=85.0, minimum=0, maximum=10000)
+
+                        with gr.Row():
+                            submit_btn = gr.Button("Lancer la prédiction", variant="primary")
+                            clear_btn = gr.Button("Réinitialiser", variant="secondary")
+
+                with gr.Column(scale=5):
+                    with gr.Group(elem_classes=["be-card"]):
+                        gr.HTML(
+                            '<div class="be-card-title">Résultat</div>'
+                            '<div class="be-hours">Prédiction churn</div>'
+                            '<p class="be-help">Résultat renvoyé par le modèle (même logique que l’endpoint <b>/predict</b>).</p>'
+                        )
+                        output = gr.Textbox(label="Churn Prediction", lines=2, interactive=False)
+
+                        gr.Markdown("#### Exemples rapides")
+                        gr.Examples(
+                            examples=[
+                                ["Female", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No",
+                                 "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check",
+                                 1, 85.0, 85.0],
+                                ["Male", "Yes", "Yes", "Yes", "Yes", "DSL", "Yes", "Yes", "Yes",
+                                 "Yes", "No", "No", "Two year", "No", "Credit card (automatic)",
+                                 60, 45.0, 2700.0]
+                            ],
+                            inputs=[
+                                gender, Partner, Dependents, PhoneService, MultipleLines,
+                                InternetService, OnlineSecurity, OnlineBackup, DeviceProtection,
+                                TechSupport, StreamingTV, StreamingMovies, Contract,
+                                PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges
+                            ],
+                        )
+
+            submit_btn.click(
+                fn=gradio_interface,
+                inputs=[
+                    gender, Partner, Dependents, PhoneService, MultipleLines,
+                    InternetService, OnlineSecurity, OnlineBackup, DeviceProtection,
+                    TechSupport, StreamingTV, StreamingMovies, Contract,
+                    PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges
+                ],
+                outputs=output
+            )
+
+            clear_btn.click(
+                fn=lambda: (
+                    "Male", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No",
+                    "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check",
+                    1, 85.0, 85.0, ""
+                ),
+                inputs=[],
+                outputs=[
+                    gender, Partner, Dependents, PhoneService, MultipleLines,
+                    InternetService, OnlineSecurity, OnlineBackup, DeviceProtection,
+                    TechSupport, StreamingTV, StreamingMovies, Contract,
+                    PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges,
+                    output
+                ]
+            )
+
+        with gr.Tab("Cybersecurity"):
+            gr.Markdown("Contenu à venir.")
+        with gr.Tab("Cloud & DevOps"):
+            gr.Markdown("Contenu à venir.")
+        with gr.Tab("AI & ML"):
+            gr.Markdown("Contenu à venir.")
+
 
 # === MOUNT GRADIO UI INTO FASTAPI ===
-# This creates the /ui endpoint that serves the Gradio interface
-# IMPORTANT: This must be the final line to properly integrate Gradio with FastAPI
-app = gr.mount_gradio_app(
-    app,           # FastAPI application instance
-    demo,          # Gradio interface
-    path="/ui"     # URL path where Gradio will be accessible
-)
+app = gr.mount_gradio_app(app, demo, path="/ui")
